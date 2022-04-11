@@ -6,6 +6,9 @@ A plugin for [Obsidian](https://obsidian.md) which allows viewing and editing of
 
 **Back up your CSV files!** This plugin is very new and therefore experimental. At this stage, data loss is a very real possibility!
 
+**For real, backup your data!** When there is a parse Error, there is an extremely high possibility that the current sheet 
+you're working on will be overridden (by the previous open one). This issue is currently being investigated.
+
 ![Screenshot](https://github.com/Sayama3/csv-obsidian/raw/main/screenshot.png)
 
 ### Original Repo

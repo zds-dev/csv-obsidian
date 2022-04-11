@@ -5,13 +5,15 @@ import {
 	Plugin,
 	Setting,
 	TextFileView, TFile, TFolder,
-	ToggleComponent,
+	ToggleComponent, View,
 	WorkspaceLeaf,
 } from "obsidian";
 import * as Papa from "papaparse";
 import Handsontable from "handsontable";
 import "handsontable/dist/handsontable.full.min.css";
 import "./styles.scss";
+import {ParseError, ParseResult} from "papaparse";
+import {error} from "handsontable/helpers";
 
 function CreateEmptyCSV(row = 1, col = 1): string{
 	let csv = "";
@@ -103,7 +105,7 @@ class ExtHandsontable extends Handsontable {
 // This is the custom view
 class CsvView extends TextFileView {
 
-	parseResult: any;
+	parseResult: ParseResult<string[]>;
 	headerToggle: ToggleComponent;
 	headers: string[] = null;
 	fileOptionsEl: HTMLElement;
@@ -253,11 +255,28 @@ class CsvView extends TextFileView {
 	// set the file contents
 	setViewData = (data: string, clear: boolean) => {
 		this.loadingBar.show();
-		setTimeout(() => this.loadDataAsync(data).then(() => this.loadingBar.hide()), 50);
+		setTimeout(() => this.loadDataAsync(data)
+			.then(() => this.loadingBar.hide())
+			.catch((e: any) => {
+				this.loadingBar.hide();
+				if (Array.isArray(e)){
+					for (const error of e) {
+						if (error.hasOwnProperty("message")){
+							new Notice(error["message"]);
+						} else {
+							new Notice(JSON.stringify(error));
+						}
+					}
+				} else {
+					new Notice(JSON.stringify(e));
+				}
+				//TODO: close the current plugins and DO NOT OVERRIDE THE FILE.
+			})
+			, 50);
 	};
 
 	loadDataAsync = async (data: string) => {
-		return new Promise<void>((resolve, reject) => {
+		return new Promise<void>((resolve, reject: ParseError[] | any) => {
 			// for the sake of persistent settings we need to set the root element id
 			this.hot.rootElement.id = this.file.path;
 			this.hotSettings.colHeaders = true;
@@ -266,9 +285,16 @@ class CsvView extends TextFileView {
 			if (data.charCodeAt(0) === 0xFEFF) data = data.slice(1);
 
 			// parse the incoming data string
-			Papa.parse(data,{
+			Papa.parse<string[]>(data,{
 				header:false,
-				complete: results => {
+				complete: (results: ParseResult<string[]>) => {
+					console.log(results);
+					//Handle the errors
+					if (results.errors !== undefined && results.errors.length !== 0){
+						reject(results.errors);
+						return;
+					}
+
 					this.parseResult = results;
 					// load the data into the table
 					this.hot.loadData(this.parseResult.data);
@@ -283,9 +309,6 @@ class CsvView extends TextFileView {
 					// toggle the headers on or off based on the loaded value
 					this.toggleHeaders(hasHeadings.value);
 					resolve();
-				},
-				error: (error: Papa.ParseError) => {
-					reject(error);
 				}
 			});
 		});
