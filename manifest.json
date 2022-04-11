@@ -1,8 +1,8 @@
 {
   "id": "csv-obsidian",
   "name": "CSV Editor",
-  "author": "death_au",
-  "authorUrl": "https://github.com/deathau",
+  "author": "Sayama3",
+  "authorUrl": "https://github.com/Sayama3",
   "description": "Edit CSV files in Obsidian",
   "isDesktopOnly": false,
   "version": "0.0.2",
