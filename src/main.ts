@@ -148,22 +148,41 @@ class CsvView extends TextFileView {
 			.addToggle((toggle: ToggleComponent) => {
 				this.autoSaveToggle = toggle;
 				this.autoSaveValue = toggle.getValue();
-				toggle.onChange((value) => {
+				toggle
+					.setValue(true)
+					.onChange((value) => {
+					// Setting the autosave value
 					this.autoSaveValue = value;
-					this?.saveButton.setDisabled(value);
+
+					// Disabling/Enabling the save button
+					if(this.saveButton) {
+						this.saveButton.setDisabled(value);
+						// this.saveButton.buttonEl.disabled = value;
+						if (value && !this.saveButton.buttonEl.hasClass("element-disabled")){
+							this.saveButton.buttonEl.addClass("save-button-disabled");
+						} else if (!value && this.saveButton.buttonEl.hasClass("save-button-disabled")) {
+							this.saveButton.buttonEl.removeClass("save-button-disabled");
+						}
+					}
 				});
-			});
+			})
+			.setClass("element-disabled");
 
 		//Creating a Save button
 		new Setting(this.fileOptionsEl)
-			.setName("Save")
 			.addButton((button: ButtonComponent) => {
 				this.saveButton = button;
+				button.setButtonText("Save");
 				button.setDisabled(this.autoSaveToggle?.getValue()??false);
+				if (button.disabled){
+					button.buttonEl.addClass("element-disabled");
+				}
 				button.onClick((e: MouseEvent) => {
+					new Notice(`Saving ${this.file.name}...`)
 					this.requestSave();
 				});
 			})
+			.setClass("element-disabled");
 
 		const tableContainer = document.createElement("div");
 		tableContainer.classList.add("csv-table-wrapper");
@@ -218,6 +237,8 @@ class CsvView extends TextFileView {
 
 	requestAutoSave(): void {
 		if(this.autoSaveValue){
+			console.warn("auto-saving");
+			new Notice("Auto saving...")
 			this.requestSave();
 		}
 	}
@@ -226,22 +247,11 @@ class CsvView extends TextFileView {
 		if (source === "loadData" || this.autoSaveValue) {
 			return; //don't save this change
 		}
-		this.requestSave();
+		if (this.requestAutoSave) {
+			console.warn("auto-saving");
+			this.requestAutoSave();
+		}
 	};
-
-	//Unloading the data
-	override async onUnloadFile(file: TFile): Promise<void>{
-		await super.onUnloadFile(file);
-		console.log(`Unloading ${file.name}.`);
-		return;
-	}
-
-	//Getting the source data
-	override async onLoadFile(file: TFile): Promise<void>{
-		await super.onLoadFile(file);
-		console.log(`Loading ${file.name}.`);
-		return;
-	}
 
 	// get the new file contents
 	override getViewData(): string {
@@ -260,11 +270,11 @@ class CsvView extends TextFileView {
 		this.loadingBar.show();
 		debounce(() => this.loadDataAsync(data)
 				.then(() => {
-					console.log("Everything ok");
+					console.log("Loading data correctly.");
 					this.loadingBar.hide();
 				})
 				.catch((e: any) => {
-					console.error("Arf, some error\n",e);
+					console.error("Catch error during the loading of the data\n",e);
 					this.loadingBar.hide();
 					if (Array.isArray(e)){
 						for (const error of e) {
@@ -277,25 +287,18 @@ class CsvView extends TextFileView {
 					} else {
 						new Notice(JSON.stringify(e));
 					}
-
-					//Close the file if there is an error
+					//Close the window
 					this.app.workspace.activeLeaf.detach();
 				})
 			, 50, true).apply(this);
 		return;
 	};
 
-	// clear the view content
-	override clear() {
-		console.log("Clear view content");
-	};
-
 	loadDataAsync(data: string): Promise<void> {
-		console.log("loading data\n",data);
+		console.log("loading data");
 		return new Promise<void>((resolve, reject: ParseError[] | any) => {
 			// for the sake of persistent settings we need to set the root element id
 			this.hot.rootElement.id = this.file.path;
-			console.log(this.hotSettings.colHeaders);
 			this.hotSettings.colHeaders = true;
 
 			// strip Byte Order Mark if necessary (damn you, Excel)
@@ -331,9 +334,21 @@ class CsvView extends TextFileView {
 		});
 	};
 
+	override clear() {
+		// clear the view content
+		this.hot?.clear();
+		console.log("Clear view content");
+	};
+
+	//Unloading the data
+	override async onUnloadFile(file: TFile): Promise<void>{
+		console.log(`Unloading ${file.name}.`);
+		await super.onUnloadFile(file);
+		return;
+	}
+
 	// Arrow function because "this" can bug
 	toggleHeaders = (value: boolean) => {
-		console.log("this");
 		value = value || false; // just in case it's undefined
 		// turning headers on
 		if (value) {
@@ -563,6 +578,6 @@ class MarkdownCellEditor extends Handsontable.editors.BaseEditor {
 	}
 	override setValue(newValue?: any): void {
 		if(this)
-			this.view.currentMode.set(newValue, true);
+			this.view.currentMode.set(newValue, false);
 	}
 }
