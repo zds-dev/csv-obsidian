@@ -1,5 +1,5 @@
 import {
-	addIcon,
+	addIcon, ButtonComponent, debounce,
 	MarkdownRenderer,
 	MarkdownView, Notice,
 	Plugin,
@@ -12,7 +12,7 @@ import * as Papa from "papaparse";
 import Handsontable from "handsontable";
 import "handsontable/dist/handsontable.full.min.css";
 import "./styles.scss";
-import {ParseError, ParseResult} from "papaparse";
+import {ParseError, ParseMeta, ParseResult} from "papaparse";
 import {error} from "handsontable/helpers";
 
 function CreateEmptyCSV(row = 1, col = 1): string{
@@ -68,6 +68,7 @@ export default class CsvPlugin extends Plugin {
 				}
 			})
 		);
+
 		// register a custom icon
 		this.addDocumentIcon("csv");
 
@@ -93,18 +94,11 @@ export default class CsvPlugin extends Plugin {
 	};
 }
 
-class ExtHandsontable extends Handsontable {
-	extContext: any;
-
-	constructor(element: Element, options: Handsontable.GridSettings, context:any) {
-		super(element, options);
-		this.extContext = context;
-	}
-}
-
 // This is the custom view
 class CsvView extends TextFileView {
-
+	autoSaveToggle: ToggleComponent;
+	saveButton: ButtonComponent;
+	autoSaveValue: boolean;
 	parseResult: ParseResult<string[]>;
 	headerToggle: ToggleComponent;
 	headers: string[] = null;
@@ -123,7 +117,9 @@ class CsvView extends TextFileView {
 
 	// constructor
 	constructor(leaf: WorkspaceLeaf) {
+		//Calling the parent constructor
 		super(leaf);
+		this.autoSaveValue = true;
 		this.onResize = () => {
 			//@ts-ignore - this.hot.view not recognized.
 			this.hot.view.wt.wtOverlays.updateMainScrollableElements();
@@ -138,12 +134,37 @@ class CsvView extends TextFileView {
 		this.fileOptionsEl.classList.add("csv-controls");
 		this.extContentEl.appendChild(this.fileOptionsEl);
 
+		//Creating a toggle to set the header
 		new Setting(this.fileOptionsEl)
 			.setName("File Includes Headers")
 			.addToggle(toggle => {
 				this.headerToggle = toggle;
 				toggle.setValue(false).onChange(this.toggleHeaders);
 			});
+
+		//Creating a toggle to allow the toggle of the auto Save
+		new Setting(this.fileOptionsEl)
+			.setName("Auto Save")
+			.addToggle((toggle: ToggleComponent) => {
+				this.autoSaveToggle = toggle;
+				this.autoSaveValue = toggle.getValue();
+				toggle.onChange((value) => {
+					this.autoSaveValue = value;
+					this?.saveButton.setDisabled(value);
+				});
+			});
+
+		//Creating a Save button
+		new Setting(this.fileOptionsEl)
+			.setName("Save")
+			.addButton((button: ButtonComponent) => {
+				this.saveButton = button;
+				button.setDisabled(this.autoSaveToggle?.getValue()??false);
+				button.onClick((e: MouseEvent) => {
+					this.requestSave();
+				});
+			})
+
 		const tableContainer = document.createElement("div");
 		tableContainer.classList.add("csv-table-wrapper");
 		this.extContentEl.appendChild(tableContainer);
@@ -156,13 +177,13 @@ class CsvView extends TextFileView {
 		Handsontable.editors.registerEditor("markdown", MarkdownCellEditor);
 		this.hotSettings = {
 			afterChange: this.hotChange,
-			afterColumnSort: this.requestSave,
-			afterColumnMove: this.requestSave,
-			afterRowMove:   this.requestSave,
-			afterCreateCol: this.requestSave,
-			afterCreateRow: this.requestSave,
-			afterRemoveCol: this.requestSave,
-			afterRemoveRow: this.requestSave,
+			afterColumnSort: this.requestAutoSave,
+			afterColumnMove: this.requestAutoSave,
+			afterRowMove:   this.requestAutoSave,
+			afterCreateCol: this.requestAutoSave,
+			afterCreateRow: this.requestAutoSave,
+			afterRemoveCol: this.requestAutoSave,
+			afterRemoveRow: this.requestAutoSave,
 			licenseKey: "non-commercial-and-evaluation",
 			colHeaders: true,
 			rowHeaders: true,
@@ -195,14 +216,124 @@ class CsvView extends TextFileView {
 		this.hotFilters = this.hot.getPlugin("filters");
 	}
 
-	hotChange = (changes: Handsontable.CellChange[], source: Handsontable.ChangeSource) => {
-		if (source === "loadData") {
+	requestAutoSave(): void {
+		if(this.autoSaveValue){
+			this.requestSave();
+		}
+	}
+
+	hotChange(changes: Handsontable.CellChange[], source: Handsontable.ChangeSource) {
+		if (source === "loadData" || this.autoSaveValue) {
 			return; //don't save this change
 		}
 		this.requestSave();
 	};
 
+	//Unloading the data
+	override async onUnloadFile(file: TFile): Promise<void>{
+		await super.onUnloadFile(file);
+		console.log(`Unloading ${file.name}.`);
+		return;
+	}
+
+	//Getting the source data
+	override async onLoadFile(file: TFile): Promise<void>{
+		await super.onLoadFile(file);
+		console.log(`Loading ${file.name}.`);
+		return;
+	}
+
+	// get the new file contents
+	override getViewData(): string {
+		// get the *source* data (i.e. unfiltered)
+		const data = this.hot.getSourceDataArray();
+		if (this.hotSettings.colHeaders !== true) {
+			data.unshift(this.hot.getColHeader());
+		}
+
+		return Papa.unparse(data);
+	};
+
+	// Setting the view from the previously set data
+	override setViewData(data: string, clear: boolean): void {
+		console.log("Setting View Data");
+		this.loadingBar.show();
+		debounce(() => this.loadDataAsync(data)
+				.then(() => {
+					console.log("Everything ok");
+					this.loadingBar.hide();
+				})
+				.catch((e: any) => {
+					console.error("Arf, some error\n",e);
+					this.loadingBar.hide();
+					if (Array.isArray(e)){
+						for (const error of e) {
+							if (error.hasOwnProperty("message")){
+								new Notice(error["message"]);
+							} else {
+								new Notice(JSON.stringify(error));
+							}
+						}
+					} else {
+						new Notice(JSON.stringify(e));
+					}
+
+					//Close the file if there is an error
+					this.app.workspace.activeLeaf.detach();
+				})
+			, 50, true).apply(this);
+		return;
+	};
+
+	// clear the view content
+	override clear() {
+		console.log("Clear view content");
+	};
+
+	loadDataAsync(data: string): Promise<void> {
+		console.log("loading data\n",data);
+		return new Promise<void>((resolve, reject: ParseError[] | any) => {
+			// for the sake of persistent settings we need to set the root element id
+			this.hot.rootElement.id = this.file.path;
+			console.log(this.hotSettings.colHeaders);
+			this.hotSettings.colHeaders = true;
+
+			// strip Byte Order Mark if necessary (damn you, Excel)
+			if (data.charCodeAt(0) === 0xFEFF) data = data.slice(1);
+
+			// parse the incoming data string
+			Papa.parse<string[]>(data,{
+				header:false,
+				complete: (results: ParseResult<string[]>) => {
+					//Handle the errors
+					if (results.errors !== undefined && results.errors.length !== 0) {
+						reject(results.errors);
+						return;
+					}
+
+					this.parseResult = results;
+
+					// load the data into the table
+					this.hot.loadData(this.parseResult.data);
+					// we also need to update the settings so that the persistence will work
+					this.hot.updateSettings(this.hotSettings);
+
+					// load the persistent setting for headings
+					const hasHeadings = { value: false };
+					this.hotState.loadValue("hasHeadings", hasHeadings);
+					this.headerToggle.setValue(hasHeadings.value);
+
+					// toggle the headers on or off based on the loaded value
+					this.toggleHeaders(hasHeadings.value);
+					resolve();
+				}
+			});
+		});
+	};
+
+	// Arrow function because "this" can bug
 	toggleHeaders = (value: boolean) => {
+		console.log("this");
 		value = value || false; // just in case it's undefined
 		// turning headers on
 		if (value) {
@@ -239,90 +370,11 @@ class CsvView extends TextFileView {
 		this.hotState.saveValue("hasHeadings", value);
 	};
 
-	// get the new file contents
-	getViewData = () => {
-		// get the *source* data (i.e. unfiltered)
-		const data = this.hot.getSourceDataArray();
-		if (this.hotSettings.colHeaders !== true) {
-			data.unshift(this.hot.getColHeader());
-		}
-
-		return Papa.unparse(data);
-		// return Papa.unparse({fields: this.parseResult.fields, data: this.parseResult.data}, {header: false});
-		// return Papa.unparse(this.parseResult);
-	};
-
-	// set the file contents
-	setViewData = (data: string, clear: boolean) => {
-		this.loadingBar.show();
-		setTimeout(() => this.loadDataAsync(data)
-			.then(() => this.loadingBar.hide())
-			.catch((e: any) => {
-				this.loadingBar.hide();
-				if (Array.isArray(e)){
-					for (const error of e) {
-						if (error.hasOwnProperty("message")){
-							new Notice(error["message"]);
-						} else {
-							new Notice(JSON.stringify(error));
-						}
-					}
-				} else {
-					new Notice(JSON.stringify(e));
-				}
-				//TODO: close the current plugins and DO NOT OVERRIDE THE FILE.
-			})
-			, 50);
-	};
-
-	loadDataAsync = async (data: string) => {
-		return new Promise<void>((resolve, reject: ParseError[] | any) => {
-			// for the sake of persistent settings we need to set the root element id
-			this.hot.rootElement.id = this.file.path;
-			this.hotSettings.colHeaders = true;
-
-			// strip Byte Order Mark if necessary (damn you, Excel)
-			if (data.charCodeAt(0) === 0xFEFF) data = data.slice(1);
-
-			// parse the incoming data string
-			Papa.parse<string[]>(data,{
-				header:false,
-				complete: (results: ParseResult<string[]>) => {
-					console.log(results);
-					//Handle the errors
-					if (results.errors !== undefined && results.errors.length !== 0){
-						reject(results.errors);
-						return;
-					}
-
-					this.parseResult = results;
-					// load the data into the table
-					this.hot.loadData(this.parseResult.data);
-					// we also need to update the settings so that the persistence will work
-					this.hot.updateSettings(this.hotSettings);
-
-					// load the persistent setting for headings
-					const hasHeadings = { value: false };
-					this.hotState.loadValue("hasHeadings", hasHeadings);
-					this.headerToggle.setValue(hasHeadings.value);
-
-					// toggle the headers on or off based on the loaded value
-					this.toggleHeaders(hasHeadings.value);
-					resolve();
-				}
-			});
-		});
-	};
-
+	// DO NOT TRANSFORM THIS INTO A REAL FUNCTION
 	markdownCellRenderer = (instance: Handsontable, TD: HTMLTableCellElement, row: number, col: number, prop: string | number, value: Handsontable.CellValue, cellProperties: Handsontable.CellProperties): HTMLTableCellElement | void => {
 		TD.innerHTML = "";
 		MarkdownRenderer.renderMarkdown(value, TD, this.file.path || "", this || null);
 		return TD;
-	};
-
-	// clear the view content
-	clear = () => {
-
 	};
 
 	// gets the title of the document
@@ -347,11 +399,20 @@ class CsvView extends TextFileView {
 	}
 }
 
+class ExtHandsontable extends Handsontable {
+	extContext: any;
+
+	constructor(element: Element, options: Handsontable.GridSettings, context:any) {
+		super(element, options);
+		this.extContext = context;
+	}
+}
+
 class MarkdownCellEditor extends Handsontable.editors.BaseEditor {
 	eGui: HTMLElement;
 	view: MarkdownView;
 
-	init(): void {
+	override init(): void {
 		const extContext: any = (this.hot as ExtHandsontable).extContext;
 		if (extContext && extContext.leaf && !this.eGui) {
 			// create the container
@@ -370,7 +431,7 @@ class MarkdownCellEditor extends Handsontable.editors.BaseEditor {
 		}
 	}
 
-	open(event?: Event): void {
+	override open(event?: Event): void {
 		this.refreshDimensions();
 		this.eGui.show();
 		this.view.editor.focus();
@@ -432,7 +493,6 @@ class MarkdownCellEditor extends Handsontable.editors.BaseEditor {
 		if (cssTransformOffset && cssTransformOffset !== -1) {
 			//@ts-ignore
 			selectStyle[cssTransformOffset[0]] = cssTransformOffset[1];
-			console.log(cssTransformOffset);
 		} else {
 			Handsontable.dom.resetCssTransform(this.eGui);
 		}
@@ -453,7 +513,7 @@ class MarkdownCellEditor extends Handsontable.editors.BaseEditor {
 		selectStyle.margin = "0px";
 	}
 
-	getEditedCell() {
+	override getEditedCell(): HTMLTableCellElement | null {
 		//@ts-ignore - this.hot.view not recognized.
 		const { wtOverlays } = this.hot.view.wt;
 		const editorSection = this.checkEditorSection();
@@ -491,17 +551,18 @@ class MarkdownCellEditor extends Handsontable.editors.BaseEditor {
 		return editedCell < 0 ? void 0 : editedCell;
 	}
 
-	close(): void {
+	override close(): void {
 		this.eGui.hide();
 	}
-	focus(): void {
+	override focus(): void {
 		this.view.editor.focus();
 		this.view.editor.refresh();
 	}
-	getValue() {
+	override getValue() {
 		return this.view.currentMode.get();
 	}
-	setValue(newValue?: any): void {
-		this.view.currentMode.set(newValue, true);
+	override setValue(newValue?: any): void {
+		if(this)
+			this.view.currentMode.set(newValue, true);
 	}
 }
