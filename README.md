@@ -6,9 +6,6 @@ A plugin for [Obsidian](https://obsidian.md) which allows viewing and editing of
 
 **Back up your CSV files!** This plugin is very new and therefore experimental. At this stage, data loss is a very real possibility!
 
-**For real, backup your data!** When there is a parse Error, there is an extremely high possibility that the current sheet 
-you're working on will be overridden (by the previous open one). This issue is currently being investigated.
-
 ![Screenshot](https://github.com/Sayama3/csv-obsidian/raw/main/screenshot.png)
 
 ### Original Repo
@@ -19,7 +16,7 @@ Thanks to [deathau](https://github.com/deathau) for the [original repo](https://
 - Open (and edit) CSV files right from Obsidian!
 - Auto-saving
 - Per-file setting for including headers (persisted in local storage)
-- Markdown editing an preview for each individual cell (internal links aren't working correctly, yet)
+- Markdown editing, a preview for each individual cell (internal links aren't working correctly, yet)
 - Sort the data by clicking on a column name
 - Filter by column values
 - Freeze columns
@@ -28,8 +25,8 @@ Thanks to [deathau](https://github.com/deathau) for the [original repo](https://
 ## Installation
 
 ### From GitHub
-- Download the latest master
-- Extract the files from the zip to your vault's plugins folder: `<vault>/.obsidian/plugins/ini-obsidian`  
+- Download the latest main
+- Extract the files from the zip to your vault's plugins folder: `<vault>/.obsidian/plugins/csv-obsidian`  
   Note: On some machines the `.obsidian` folder may be hidden. On MacOS you should be able to press `Command+Shift+Dot` to show the folder in Finder.
 - Reload Obsidian
 - If prompted about Safe Mode, you can disable safe mode and enable the plugin.
@@ -62,3 +59,10 @@ Initial release of csv-obsidian! See [Features](#Features) above
 ## 0.0.2
 Update of the source code and the package.json to use the latest version the api and each package.
 Add a button to create CSV from `File explorer` tab.
+## 0.0.3
+Fix the error that was overriding the faulty csv. *(They are aside, the editor will just close)*.
+A notice will also show what went wrong with the csv.
+
+### Known issue
+Sometimes, the headers won't move, when scrolling so the content will not entirely be displayed. 
+Try reloading/restart obsidian or switching to a regular file back and forth. 
