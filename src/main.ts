@@ -193,7 +193,7 @@ class CsvView extends TextFileView {
 
 
 		Handsontable.renderers.registerRenderer("markdown", this.markdownCellRenderer);
-		Handsontable.editors.registerEditor("markdown", MarkdownCellEditor);
+		// Handsontable.editors.registerEditor("markdown", MarkdownCellEditor);
 		this.hotSettings = {
 			afterChange: this.hotChange,
 			afterColumnSort: this.requestAutoSave,
@@ -209,7 +209,7 @@ class CsvView extends TextFileView {
 			autoColumnSize: true,
 			autoRowSize: true,
 			renderer: "markdown",
-			editor: "markdown",
+			// editor: "markdown",
 			className: "csv-table",
 			contextMenu: true,
 			currentRowClassName: "active-row",
@@ -388,6 +388,37 @@ class CsvView extends TextFileView {
 	// DO NOT TRANSFORM THIS INTO A REAL FUNCTION
 	markdownCellRenderer = (instance: Handsontable, TD: HTMLTableCellElement, row: number, col: number, prop: string | number, value: Handsontable.CellValue, cellProperties: Handsontable.CellProperties): HTMLTableCellElement | void => {
 		TD.innerHTML = "";
+		if (cellProperties.className){
+			const htmlClass: string[] = Array.isArray(cellProperties.className)?cellProperties.className:cellProperties.className.split(" ");
+			TD.style.textAlign = "";
+			for (const c of htmlClass) {
+				switch (c) {
+				case "htLeft":
+					TD.style.textAlign = "left";
+					break;
+				case "htCenter":
+					TD.style.textAlign = "center";
+					break;
+				case "htRight":
+					TD.style.textAlign = "right";
+					break;
+				case "htJustify":
+					TD.style.textAlign = "justify";
+					break;
+				case "htTop":
+					TD.style.verticalAlign = "top";
+					break;
+				case "htMiddle":
+					TD.style.verticalAlign = "middle";
+					break;
+				case "htBottom":
+					TD.style.verticalAlign = "bottom";
+					break;
+				default:
+					break;
+				}
+			}
+		}
 		MarkdownRenderer.renderMarkdown(value, TD, this.file.path || "", this || null);
 		return TD;
 	};
@@ -423,161 +454,161 @@ class ExtHandsontable extends Handsontable {
 	}
 }
 
-class MarkdownCellEditor extends Handsontable.editors.BaseEditor {
-	eGui: HTMLElement;
-	view: MarkdownView;
-
-	override init(): void {
-		const extContext: any = (this.hot as ExtHandsontable).extContext;
-		if (extContext && extContext.leaf && !this.eGui) {
-			// create the container
-			this.eGui = this.hot.rootDocument.createElement("DIV");
-			Handsontable.dom.addClass(this.eGui, "htMarkdownEditor");
-			Handsontable.dom.addClass(this.eGui, "csv-cell-edit");
-
-			// create a markdown (editor) view
-			this.view = new MarkdownView(extContext.leaf);
-
-			this.eGui.appendChild(this.view.contentEl);
-			// hide the container
-			this.eGui.style.display = "none";
-			// add the container to the table root element
-			this.hot.rootElement.appendChild(this.eGui);
-		}
-	}
-
-	override open(event?: Event): void {
-		this.refreshDimensions();
-		this.eGui.show();
-		this.view.editor.focus();
-		this.view.editor.refresh();
-	}
-
-	refreshDimensions() {
-		this.TD = this.getEditedCell();
-
-		// TD is outside of the viewport.
-		if (!this.TD) {
-			this.close();
-
-			return;
-		}
-		//@ts-ignore - this.hot.view not recognized.
-		const { wtOverlays } = this.hot.view.wt;
-		const currentOffset = Handsontable.dom.offset(this.TD);
-		const containerOffset = Handsontable.dom.offset(this.hot.rootElement);
-		const scrollableContainer = wtOverlays.scrollableElement;
-		const editorSection = this.checkEditorSection();
-		let width = Handsontable.dom.outerWidth(this.TD) + 1;
-		let height = Handsontable.dom.outerHeight(this.TD) + 1;
-
-		let editTop = currentOffset.top - containerOffset.top - 1 - (scrollableContainer.scrollTop || 0);
-		let editLeft = currentOffset.left - containerOffset.left - 1 - (scrollableContainer.scrollLeft || 0);
-
-		let cssTransformOffset;
-
-		switch (editorSection) {
-		case "top":
-			cssTransformOffset = Handsontable.dom.getCssTransform(wtOverlays.topOverlay.clone.wtTable.holder.parentNode);
-			break;
-		case "left":
-			cssTransformOffset = Handsontable.dom.getCssTransform(wtOverlays.leftOverlay.clone.wtTable.holder.parentNode);
-			break;
-		case "top-left-corner":
-			cssTransformOffset = Handsontable.dom.getCssTransform(wtOverlays.topLeftCornerOverlay.clone.wtTable.holder.parentNode);
-			break;
-		case "bottom-left-corner":
-			cssTransformOffset = Handsontable.dom.getCssTransform(wtOverlays.bottomLeftCornerOverlay.clone.wtTable.holder.parentNode);
-			break;
-		case "bottom":
-			cssTransformOffset = Handsontable.dom.getCssTransform(wtOverlays.bottomOverlay.clone.wtTable.holder.parentNode);
-			break;
-		default:
-			break;
-		}
-
-		if (this.hot.getSelectedLast()[0] === 0) {
-			editTop += 1;
-		}
-		if (this.hot.getSelectedLast()[1] === 0) {
-			editLeft += 1;
-		}
-
-		const selectStyle = this.eGui.style;
-
-		if (cssTransformOffset && cssTransformOffset !== -1) {
-			//@ts-ignore
-			selectStyle[cssTransformOffset[0]] = cssTransformOffset[1];
-		} else {
-			Handsontable.dom.resetCssTransform(this.eGui);
-		}
-
-		const cellComputedStyle = Handsontable.dom.getComputedStyle(this.TD, this.hot.rootWindow);
-		if (parseInt(cellComputedStyle.borderTopWidth, 10) > 0) {
-			height -= 1;
-		}
-		if (parseInt(cellComputedStyle.borderLeftWidth, 10) > 0) {
-			width -= 1;
-		}
-
-		selectStyle.height = `${height}px`;
-		selectStyle.minWidth = `${width}px`;
-		selectStyle.maxWidth = `${width}px`;
-		selectStyle.top = `${editTop}px`;
-		selectStyle.left = `${editLeft}px`;
-		selectStyle.margin = "0px";
-	}
-
-	override getEditedCell(): HTMLTableCellElement | null {
-		//@ts-ignore - this.hot.view not recognized.
-		const { wtOverlays } = this.hot.view.wt;
-		const editorSection = this.checkEditorSection();
-		let editedCell;
-
-		switch (editorSection) {
-		case "top":
-			editedCell = wtOverlays.topOverlay.clone.wtTable.getCell({
-				row: this.row,
-				col: this.col
-			});
-			this.eGui.style.zIndex = "101";
-			break;
-		case "top-left-corner":
-		case "bottom-left-corner":
-			editedCell = wtOverlays.topLeftCornerOverlay.clone.wtTable.getCell({
-				row: this.row,
-				col: this.col
-			});
-			this.eGui.style.zIndex = "103";
-			break;
-		case "left":
-			editedCell = wtOverlays.leftOverlay.clone.wtTable.getCell({
-				row: this.row,
-				col: this.col
-			});
-			this.eGui.style.zIndex = "102";
-			break;
-		default:
-			editedCell = this.hot.getCell(this.row, this.col);
-			this.eGui.style.zIndex = "";
-			break;
-		}
-
-		return editedCell < 0 ? void 0 : editedCell;
-	}
-
-	override close(): void {
-		this.eGui.hide();
-	}
-	override focus(): void {
-		this.view.editor.focus();
-		this.view.editor.refresh();
-	}
-	override getValue() {
-		return this.view.currentMode.get();
-	}
-	override setValue(newValue?: any): void {
-		if(this)
-			this.view.currentMode.set(newValue, false);
-	}
-}
+// class MarkdownCellEditor extends Handsontable.editors.BaseEditor {
+// 	eGui: HTMLElement;
+// 	view: MarkdownView;
+//
+// 	override init(): void {
+// 		const extContext: any = (this.hot as ExtHandsontable).extContext;
+// 		if (extContext && extContext.leaf && !this.eGui) {
+// 			// create the container
+// 			this.eGui = this.hot.rootDocument.createElement("DIV");
+// 			Handsontable.dom.addClass(this.eGui, "htMarkdownEditor");
+// 			Handsontable.dom.addClass(this.eGui, "csv-cell-edit");
+//
+// 			// create a markdown (editor) view
+// 			this.view = new MarkdownView(extContext.leaf);
+//
+// 			this.eGui.appendChild(this.view.contentEl);
+// 			// hide the container
+// 			this.eGui.style.display = "none";
+// 			// add the container to the table root element
+// 			this.hot.rootElement.appendChild(this.eGui);
+// 		}
+// 	}
+//
+// 	override open(event?: Event): void {
+// 		this.refreshDimensions();
+// 		this.eGui.show();
+// 		this.view.editor.focus();
+// 		this.view.editor.refresh();
+// 	}
+//
+// 	refreshDimensions() {
+// 		this.TD = this.getEditedCell();
+//
+// 		// TD is outside of the viewport.
+// 		if (!this.TD) {
+// 			this.close();
+//
+// 			return;
+// 		}
+// 		//@ts-ignore - this.hot.view not recognized.
+// 		const { wtOverlays } = this.hot.view.wt;
+// 		const currentOffset = Handsontable.dom.offset(this.TD);
+// 		const containerOffset = Handsontable.dom.offset(this.hot.rootElement);
+// 		const scrollableContainer = wtOverlays.scrollableElement;
+// 		const editorSection = this.checkEditorSection();
+// 		let width = Handsontable.dom.outerWidth(this.TD) + 1;
+// 		let height = Handsontable.dom.outerHeight(this.TD) + 1;
+//
+// 		let editTop = currentOffset.top - containerOffset.top - 1 - (scrollableContainer.scrollTop || 0);
+// 		let editLeft = currentOffset.left - containerOffset.left - 1 - (scrollableContainer.scrollLeft || 0);
+//
+// 		let cssTransformOffset;
+//
+// 		switch (editorSection) {
+// 		case "top":
+// 			cssTransformOffset = Handsontable.dom.getCssTransform(wtOverlays.topOverlay.clone.wtTable.holder.parentNode);
+// 			break;
+// 		case "left":
+// 			cssTransformOffset = Handsontable.dom.getCssTransform(wtOverlays.leftOverlay.clone.wtTable.holder.parentNode);
+// 			break;
+// 		case "top-left-corner":
+// 			cssTransformOffset = Handsontable.dom.getCssTransform(wtOverlays.topLeftCornerOverlay.clone.wtTable.holder.parentNode);
+// 			break;
+// 		case "bottom-left-corner":
+// 			cssTransformOffset = Handsontable.dom.getCssTransform(wtOverlays.bottomLeftCornerOverlay.clone.wtTable.holder.parentNode);
+// 			break;
+// 		case "bottom":
+// 			cssTransformOffset = Handsontable.dom.getCssTransform(wtOverlays.bottomOverlay.clone.wtTable.holder.parentNode);
+// 			break;
+// 		default:
+// 			break;
+// 		}
+//
+// 		if (this.hot.getSelectedLast()[0] === 0) {
+// 			editTop += 1;
+// 		}
+// 		if (this.hot.getSelectedLast()[1] === 0) {
+// 			editLeft += 1;
+// 		}
+//
+// 		const selectStyle = this.eGui.style;
+//
+// 		if (cssTransformOffset && cssTransformOffset !== -1) {
+// 			//@ts-ignore
+// 			selectStyle[cssTransformOffset[0]] = cssTransformOffset[1];
+// 		} else {
+// 			Handsontable.dom.resetCssTransform(this.eGui);
+// 		}
+//
+// 		const cellComputedStyle = Handsontable.dom.getComputedStyle(this.TD, this.hot.rootWindow);
+// 		if (parseInt(cellComputedStyle.borderTopWidth, 10) > 0) {
+// 			height -= 1;
+// 		}
+// 		if (parseInt(cellComputedStyle.borderLeftWidth, 10) > 0) {
+// 			width -= 1;
+// 		}
+//
+// 		selectStyle.height = `${height}px`;
+// 		selectStyle.minWidth = `${width}px`;
+// 		selectStyle.maxWidth = `${width}px`;
+// 		selectStyle.top = `${editTop}px`;
+// 		selectStyle.left = `${editLeft}px`;
+// 		selectStyle.margin = "0px";
+// 	}
+//
+// 	override getEditedCell(): HTMLTableCellElement | null {
+// 		//@ts-ignore - this.hot.view not recognized.
+// 		const { wtOverlays } = this.hot.view.wt;
+// 		const editorSection = this.checkEditorSection();
+// 		let editedCell;
+//
+// 		switch (editorSection) {
+// 		case "top":
+// 			editedCell = wtOverlays.topOverlay.clone.wtTable.getCell({
+// 				row: this.row,
+// 				col: this.col
+// 			});
+// 			this.eGui.style.zIndex = "101";
+// 			break;
+// 		case "top-left-corner":
+// 		case "bottom-left-corner":
+// 			editedCell = wtOverlays.topLeftCornerOverlay.clone.wtTable.getCell({
+// 				row: this.row,
+// 				col: this.col
+// 			});
+// 			this.eGui.style.zIndex = "103";
+// 			break;
+// 		case "left":
+// 			editedCell = wtOverlays.leftOverlay.clone.wtTable.getCell({
+// 				row: this.row,
+// 				col: this.col
+// 			});
+// 			this.eGui.style.zIndex = "102";
+// 			break;
+// 		default:
+// 			editedCell = this.hot.getCell(this.row, this.col);
+// 			this.eGui.style.zIndex = "";
+// 			break;
+// 		}
+//
+// 		return editedCell < 0 ? void 0 : editedCell;
+// 	}
+//
+// 	override close(): void {
+// 		this.eGui.hide();
+// 	}
+// 	override focus(): void {
+// 		this.view.editor.focus();
+// 		this.view.editor.refresh();
+// 	}
+// 	override getValue() {
+// 		return this.view.currentMode.get();
+// 	}
+// 	override setValue(newValue?: any): void {
+// 		if(this)
+// 			this.view.currentMode.set(newValue, false);
+// 	}
+// }
