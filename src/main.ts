@@ -142,47 +142,42 @@ class CsvView extends TextFileView {
 				toggle.setValue(false).onChange(this.toggleHeaders);
 			});
 
-		//Creating a toggle to allow the toggle of the auto Save
-		new Setting(this.fileOptionsEl)
-			.setName("Auto Save")
-			.addToggle((toggle: ToggleComponent) => {
-				this.autoSaveToggle = toggle;
-				this.autoSaveValue = toggle.getValue();
-				toggle
-					.setValue(true)
-					.onChange((value) => {
-					// Setting the autosave value
-					this.autoSaveValue = value;
-
-					// Disabling/Enabling the save button
-					if(this.saveButton) {
-						this.saveButton.setDisabled(value);
-						// this.saveButton.buttonEl.disabled = value;
-						if (value && !this.saveButton.buttonEl.hasClass("element-disabled")){
-							this.saveButton.buttonEl.addClass("save-button-disabled");
-						} else if (!value && this.saveButton.buttonEl.hasClass("save-button-disabled")) {
-							this.saveButton.buttonEl.removeClass("save-button-disabled");
-						}
-					}
-				});
-			})
-			.setClass("element-disabled");
-
-		//Creating a Save button
-		new Setting(this.fileOptionsEl)
-			.addButton((button: ButtonComponent) => {
-				this.saveButton = button;
-				button.setButtonText("Save");
-				button.setDisabled(this.autoSaveToggle?.getValue()??false);
-				if (button.disabled){
-					button.buttonEl.addClass("element-disabled");
-				}
-				button.onClick((e: MouseEvent) => {
-					new Notice(`Saving ${this.file.name}...`)
-					this.requestSave();
-				});
-			})
-			.setClass("element-disabled");
+		// //Creating a toggle to allow the toggle of the auto Save
+		// new Setting(this.fileOptionsEl)
+		// 	.setName("Auto Save")
+		// 	.addToggle((toggle: ToggleComponent) => {
+		// 		toggle
+		// 			.setValue(this.autoSaveValue)
+		// 			.onChange((value) => {
+		// 			// Setting the autosave value
+		// 			this.autoSaveValue = value;
+		//
+		// 			// Disabling/Enabling the save button
+		// 			if(this.saveButton) {
+		// 				this.saveButton.setDisabled(value);
+		// 				// this.saveButton.buttonEl.disabled = value;
+		// 				if (value && !this.saveButton.buttonEl.hasClass("element-disabled")){
+		// 					this.saveButton.buttonEl.addClass("element-disabled");
+		// 				} else if (!value && this.saveButton.buttonEl.hasClass("element-disabled")) {
+		// 					this.saveButton.buttonEl.removeClass("element-disabled");
+		// 				}
+		// 			}
+		// 		});
+		// 	});
+		//
+		// //Creating a Save button
+		// new Setting(this.fileOptionsEl)
+		// 	.addButton((button: ButtonComponent) => {
+		// 		this.saveButton = button;
+		// 		button.setButtonText("Save");
+		// 		button.setDisabled(this.autoSaveToggle?.getValue()??this.autoSaveValue);
+		// 		if (button.disabled){
+		// 			button.buttonEl.addClass("element-disabled");
+		// 		}
+		// 		button.onClick((e: MouseEvent) => {
+		// 			this.requestManualSave();
+		// 		});
+		// 	});
 
 		const tableContainer = document.createElement("div");
 		tableContainer.classList.add("csv-table-wrapper");
@@ -235,38 +230,48 @@ class CsvView extends TextFileView {
 		this.hotFilters = this.hot.getPlugin("filters");
 	}
 
-	requestAutoSave(): void {
+	requestAutoSave = (): void => {
 		if(this.autoSaveValue){
-			console.warn("auto-saving");
-			new Notice("Auto saving...")
 			this.requestSave();
 		}
 	}
 
-	hotChange(changes: Handsontable.CellChange[], source: Handsontable.ChangeSource) {
-		if (source === "loadData" || this.autoSaveValue) {
+	requestManualSave = (): void => {
+		if(!this.autoSaveValue) {
+			this.requestSave();
+		}
+	}
+
+	hotChange = (changes: Handsontable.CellChange[], source: Handsontable.ChangeSource): void => {
+		if (source === "loadData") {
 			return; //don't save this change
 		}
-		if (this.requestAutoSave) {
-			console.warn("auto-saving");
+
+		if(this.requestAutoSave) {
 			this.requestAutoSave();
+		} else {
+			console.error("Couldn't auto save...");
 		}
 	};
 
 	// get the new file contents
 	override getViewData(): string {
-		// get the *source* data (i.e. unfiltered)
-		const data = this.hot.getSourceDataArray();
-		if (this.hotSettings.colHeaders !== true) {
-			data.unshift(this.hot.getColHeader());
-		}
+		if(this.hot && !this.hot.isDestroyed) {
+			// get the *source* data (i.e. unfiltered)
+			const data = this.hot.getSourceDataArray();
+			if (this.hotSettings.colHeaders !== true) {
+				data.unshift(this.hot.getColHeader());
+			}
 
-		return Papa.unparse(data);
+			return Papa.unparse(data);
+		} else {
+			return this.data;
+		}
 	};
 
 	// Setting the view from the previously set data
 	override setViewData(data: string, clear: boolean): void {
-		console.log("Setting View Data");
+		this.data = data;
 		this.loadingBar.show();
 		debounce(() => this.loadDataAsync(data)
 				.then(() => {
@@ -274,19 +279,25 @@ class CsvView extends TextFileView {
 					this.loadingBar.hide();
 				})
 				.catch((e: any) => {
-					console.error("Catch error during the loading of the data\n",e);
+					const ErrorTimeout = 5000;
 					this.loadingBar.hide();
 					if (Array.isArray(e)){
+						console.error(`Catch${e.length > 1 ? " multiple" : ""} error during the loading of the data from ${this.file.name}`);
 						for (const error of e) {
 							if (error.hasOwnProperty("message")){
-								new Notice(error["message"]);
+								console.error(error["message"], error);
+								new Notice(error["message"],ErrorTimeout);
 							} else {
-								new Notice(JSON.stringify(error));
+								console.error(JSON.stringify(error), error);
+								new Notice(JSON.stringify(error),ErrorTimeout);
 							}
 						}
 					} else {
-						new Notice(JSON.stringify(e));
+						new Notice(JSON.stringify(e),ErrorTimeout);
+						console.error(`Catch error during the loading of the data from ${this.file.name}\n`,e);
 					}
+					this.hot?.destroy();
+					this.hot = undefined;
 					//Close the window
 					this.app.workspace.activeLeaf.detach();
 				})
@@ -295,8 +306,7 @@ class CsvView extends TextFileView {
 	};
 
 	loadDataAsync(data: string): Promise<void> {
-		console.log("loading data");
-		return new Promise<void>((resolve, reject: ParseError[] | any) => {
+		return new Promise<void>((resolve: (value: (PromiseLike<void> | void)) => void, reject: ParseError[] | any) => {
 			// for the sake of persistent settings we need to set the root element id
 			this.hot.rootElement.id = this.file.path;
 			this.hotSettings.colHeaders = true;
@@ -337,14 +347,24 @@ class CsvView extends TextFileView {
 	override clear() {
 		// clear the view content
 		this.hot?.clear();
-		console.log("Clear view content");
+		this.hot?.clearUndo();
 	};
 
 	//Unloading the data
 	override async onUnloadFile(file: TFile): Promise<void>{
-		console.log(`Unloading ${file.name}.`);
 		await super.onUnloadFile(file);
 		return;
+	}
+
+	override async save(clear?: boolean): Promise<void> {
+		const SaveNoticeTimeout = 1000;
+		try {
+			await super.save(clear);
+			new Notice(`"${this.file.name}" was saved.`,SaveNoticeTimeout);
+		} catch (e) {
+			new Notice(`"${this.file.name}" couldn't be saved.`,SaveNoticeTimeout);
+			throw e;
+		}
 	}
 
 	// Arrow function because "this" can bug
