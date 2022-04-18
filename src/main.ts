@@ -282,7 +282,7 @@ class CsvView extends TextFileView {
 					const ErrorTimeout = 5000;
 					this.loadingBar.hide();
 					if (Array.isArray(e)){
-						console.error(`Catch${e.length > 1 ? " multiple" : ""} error during the loading of the data from ${this.file.name}`);
+						console.error(`Catch ${e.length > 1 ? "multiple errors" : "an error"} during the loading of the data from "${this.file.name}".`);
 						for (const error of e) {
 							if (error.hasOwnProperty("message")){
 								console.error(error["message"], error);
