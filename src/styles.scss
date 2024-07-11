@@ -33,7 +33,7 @@
       }
     }
   }
-  
+
   .csv-controls {
     margin: 20px 8px 8px 8px;
     padding: 8px;
@@ -53,7 +53,7 @@
 
   td>p:first-child { margin-top: 0; }
   td>p:last-child { margin-bottom: 0; }
-  
+
   .handsontable.csv-table{
     tbody tr {
       background-color: var(--background-primary);
@@ -92,7 +92,7 @@
       border-color: var(--background-modifier-border);
       color: var(--text-normal);
     }
-    
+
     &.htRowHeaders thead tr th:nth-child(2),
     tr:first-child th,
     tr:first-child td,
@@ -130,13 +130,18 @@
     border-color: var(--background-modifier-border);
     color: var(--text-normal);
   }
-  
+
   table tbody tr td.htDisabled {
     color: var(--text-faint);
   }
-  
+
   table tbody tr td.htSeparator,
   .ht_master table.htCore {
     border-color: var(--background-modifier-border);
   }
+}
+
+.element-disabled {
+  opacity: 0.1;
+  cursor: default;
 }
